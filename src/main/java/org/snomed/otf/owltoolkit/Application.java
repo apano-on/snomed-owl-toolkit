@@ -45,6 +45,7 @@ public class Application {
 	private static final SimpleDateFormat DATETIME_FORMAT = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss");
 	private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyyMMdd");
 	private static final String STATED_RELATIONSHIP_SNAPSHOT = "sct2_StatedRelationship_Snapshot.txt";
+	private static final String FILTERED_ENTITY = "-filtered_138875005";
 
 	private boolean deleteOntologyFileOnExit;
 
@@ -85,7 +86,7 @@ public class Application {
 				convertStatedRelationshipsToOwlReferenceSetAndReconcile(args);
 			}
 			if (!modeFound || args.contains(ARG_RF2_TO_OWL)) {
-				rf2ToOwl(args);
+				rf2ToOwl(args, FILTERED_ENTITY.substring(FILTERED_ENTITY.lastIndexOf("_") + 1));
 			}
 		}
 	}
@@ -108,7 +109,7 @@ public class Application {
 	}
 
 	// RF2 to OWL
-	private void rf2ToOwl(List<String> args) throws ConversionException, IOException {
+	private void rf2ToOwl(List<String> args, String filter) throws ConversionException, IOException {
 		// Parameter validation
 		Set<File> snapshotFiles = getSnapshotFiles(args);
 		File deltaFile = getDeltaFiles(args);
@@ -142,7 +143,7 @@ public class Application {
 			 OptionalFileInputStream deltaStream = new OptionalFileInputStream(deltaFile);
 			 FileOutputStream outputStream = new FileOutputStream(ontologyOutputFile)) {
 
-			new RF2ToOWLService().convertRF2ArchiveToOWL(ontologyUri, versionDate, includeDescriptions, snapshotStreams, deltaStream, outputStream);
+			new RF2ToOWLService().convertRF2ArchiveToOWL(ontologyUri, versionDate, includeDescriptions, snapshotStreams, deltaStream, outputStream, filter);
 		} catch (IOException e) {
 			System.err.println("Failed to close input or output stream.");
 			e.printStackTrace();

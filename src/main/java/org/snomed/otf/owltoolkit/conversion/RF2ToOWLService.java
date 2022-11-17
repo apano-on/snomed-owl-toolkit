@@ -1,5 +1,6 @@
 package org.snomed.otf.owltoolkit.conversion;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import org.ihtsdo.otf.snomedboot.ReleaseImportException;
 import org.semanticweb.owlapi.model.OWLOntology;
@@ -11,14 +12,18 @@ import org.snomed.otf.owltoolkit.constants.Concepts;
 import org.snomed.otf.owltoolkit.ontology.OntologyService;
 import org.snomed.otf.owltoolkit.taxonomy.SnomedTaxonomy;
 import org.snomed.otf.owltoolkit.taxonomy.SnomedTaxonomyBuilder;
+import org.snomed.otf.owltoolkit.taxonomy.SnomedTaxonomyLoader;
 import org.snomed.otf.owltoolkit.util.InputStreamSet;
 import org.snomed.otf.owltoolkit.util.OptionalFileInputStream;
 import org.springframework.util.FileCopyUtils;
 
 import java.io.*;
 import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class RF2ToOWLService {
 
@@ -36,7 +41,8 @@ public class RF2ToOWLService {
 	public static final String HEADER_SUFFIX = ">)";
 
 	public void convertRF2ArchiveToOWL(String ontologyUriOverride, String versionDate, boolean includeDescriptions, InputStreamSet snomedRf2SnapshotArchives,
-			OptionalFileInputStream deltaStream, OutputStream owlFileOutputStream) throws ConversionException {
+			OptionalFileInputStream deltaStream, OutputStream owlFileOutputStream,
+									   String filter) throws ConversionException {
 
 		// Load required parts of RF2 into memory
 		logger.info("Loading RF2 files");
@@ -46,6 +52,22 @@ public class RF2ToOWLService {
 		} catch (ReleaseImportException e) {
 			throw new ConversionException("Failed to load RF2 archive.", e);
 		}
+
+		/*
+		Filter snomedTaxonomy to keep only specified class
+		 */
+		SnomedTaxonomyLoader snomedTaxonomyLoader = new SnomedTaxonomyLoader();
+		List<Long> temp0 = snomedTaxonomy.getAllConceptIds().stream()
+				.filter(v -> v.toString().equals(filter)).collect(Collectors.toList());
+		temp0.stream()
+						.forEach(v -> snomedTaxonomyLoader.newConceptState(v.toString(), "", "1", Concepts.SNOMED_CT_CORE_MODULE, ""));
+		Map<Long, Long> temp1 = snomedTaxonomy.getConceptModuleMap().entrySet().stream()
+				.filter(v -> v.getKey().toString().equals(filter))//.collect(Collectors.toList())
+				.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+		/*temp1.entrySet().stream()
+				.forEach(v -> snomedTaxonomyLoader.newRelationshipState());*/
+
+		SnomedTaxonomy snomedTaxonomy3 = snomedTaxonomyLoader.getSnomedTaxonomy();
 
 		if (snomedTaxonomy.getStatedRelationships().isEmpty() && snomedTaxonomy.getAxiomCount() == 0) {
 			throw new ConversionException("No Stated Relationships or Axioms were found. An Ontology file can not be produced.");
@@ -82,6 +104,7 @@ public class RF2ToOWLService {
 		OWLOntology ontology;
 		try {
 			ontology = ontologyService.createOntology(snomedTaxonomy, ontologyUri, versionDate, includeDescriptions);
+			String check = "check";
 		} catch (OWLOntologyCreationException e) {
 			throw new ConversionException("Failed to build OWL Ontology from SNOMED taxonomy.", e);
 		}

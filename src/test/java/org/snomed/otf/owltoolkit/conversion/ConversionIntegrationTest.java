@@ -44,7 +44,7 @@ public class ConversionIntegrationTest {
 		try (InputStreamSet snapshotArchives = new InputStreamSet(new FileInputStream(baseRF2SnapshotZip));
 			 OptionalFileInputStream deltaStream = new OptionalFileInputStream(null)) {
 
-			rf2ToOWLService.convertRF2ArchiveToOWL(null, "20180931", true, snapshotArchives, deltaStream, byteArrayOutputStream);
+			rf2ToOWLService.convertRF2ArchiveToOWL(null, "20180931", true, snapshotArchives, deltaStream, byteArrayOutputStream, null);
 		}
 		String owlFileFromStatedRelationships = byteArrayOutputStream.toString();
 
@@ -99,7 +99,7 @@ public class ConversionIntegrationTest {
 			 OptionalFileInputStream deltaStream = new OptionalFileInputStream(owlBasedDeltaZip)) {
 
 			byteArrayOutputStream.reset();
-			rf2ToOWLService.convertRF2ArchiveToOWL(null, "20180931", true, snapshotArchives, deltaStream, byteArrayOutputStream);
+			rf2ToOWLService.convertRF2ArchiveToOWL(null, "20180931", true, snapshotArchives, deltaStream, byteArrayOutputStream, null);
 		}
 		String owlFileFromOwlBasedRelease = byteArrayOutputStream.toString();
 
