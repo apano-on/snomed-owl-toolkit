@@ -86,6 +86,7 @@ public class Application {
 				convertStatedRelationshipsToOwlReferenceSetAndReconcile(args);
 			}
 			if (!modeFound || args.contains(ARG_RF2_TO_OWL)) {
+				//rf2ToOwl(args, null);
 				rf2ToOwl(args, FILTERED_ENTITY.substring(FILTERED_ENTITY.lastIndexOf("_") + 1));
 			}
 		}

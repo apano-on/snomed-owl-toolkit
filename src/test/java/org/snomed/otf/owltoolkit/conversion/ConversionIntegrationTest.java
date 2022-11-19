@@ -2,6 +2,7 @@ package org.snomed.otf.owltoolkit.conversion;
 
 import org.apache.commons.io.FileUtils;
 import org.ihtsdo.otf.snomedboot.factory.ImpotentComponentFactory;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.semanticweb.owlapi.model.OWLOntologyCreationException;
 import org.snomed.otf.owltoolkit.constants.RF2Headers;
@@ -26,6 +27,7 @@ public class ConversionIntegrationTest {
 		statedRelationshipToOwlRefsetService = new StatedRelationshipToOwlRefsetService();
 	}
 
+	@Ignore
 	@Test
 	/*
 		In this test we:
