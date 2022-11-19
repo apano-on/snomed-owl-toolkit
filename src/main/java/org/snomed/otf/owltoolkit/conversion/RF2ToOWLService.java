@@ -126,7 +126,8 @@ public class RF2ToOWLService {
 			// Retrieve a specific module
 			SyntacticLocalityModuleExtractor sme =
 					new SyntacticLocalityModuleExtractor(ontologyService.getManager(), ontology, ModuleType.STAR);
-			Set<OWLAxiom> reasonedAxioms = sme.extract(seedSig);
+			Set<OWLAxiom> reasonedAxioms = new HashSet<>();
+			//Set<OWLAxiom> reasonedAxioms2 = sme.extract(seedSig);
 
 			// Get all subclass and superclass axioms for selected class
 			Collection<OWLAxiom> subClassOfFilterAxioms =
@@ -135,16 +136,68 @@ public class RF2ToOWLService {
 			Collection<OWLAxiom> superClassOfFilterAxioms =
 					ontology.filterAxioms(Filters.subClassWithSuper, filteredClass, INCLUDED);
 			reasonedAxioms.addAll(superClassOfFilterAxioms);
-			/*Collection<OWLAxiom> axioms3 =
-					ontology.filterAxioms(Filters.axiomsFromTBoxAndRBox, filteredClass, INCLUDED);
-			Collection<OWLAxiom> axioms4 =
-					ontology.filterAxioms(Filters.axiomsNotInTBoxOrRBox, filteredClass, INCLUDED);
-			Collection<OWLAxiom> axioms5 =
-					ontology.filterAxioms(Filters.apDomainFilter, filteredClass, INCLUDED);*/
 
 			// Get all relevant Annotation Axioms
 			Set<OWLAnnotationAssertionAxiom> annotationFilterAxioms = ontology.getAnnotationAssertionAxioms(filteredClass.getIRI());
 			reasonedAxioms.addAll(annotationFilterAxioms);
+
+			// Add the new class
+			Set<OWLDeclarationAxiom> linkedClasses = seedSig.stream()
+					//.map(c -> df.getOWLClass(c.getIRI()))
+					.filter(a -> !(a.getIRI().toString().equals("http://www.w3.org/2002/07/owl#Thing")))
+					.filter(a -> !(a.getIRI().toString().equals("http://www.w3.org/2002/07/owl#Nothing")))
+					.map(a -> df.getOWLDeclarationAxiom(a))
+					.collect(Collectors.toSet());
+
+			for (OWLDeclarationAxiom declarationClassAxiom : linkedClasses) {
+				reasonedAxioms.addAll(ontology.getAnnotationAssertionAxioms(declarationClassAxiom.getEntity().getIRI()));
+				reasonedAxioms.addAll(ontology.filterAxioms(Filters.subClassWithSub, declarationClassAxiom.getEntity(), INCLUDED));
+				// For ALL the subclasses, there might be cases where they are unrelated to what we look for
+				// We however still need to get the relevant annotations for those pieces of info
+				Collection<OWLAxiom> temp = ontology.filterAxioms(Filters.subClassWithSub, declarationClassAxiom.getEntity(), INCLUDED);
+				Set<IRI> tempAxioms = new HashSet<>();
+
+				//TODO: Drill down better, perhaps using recursion?
+				//Some of the lowest levels are missing, a private method to refactor things seems necessary
+
+				if (!temp.isEmpty()) {
+					for (OWLAxiom owlAxiomLinked : temp) {
+						OWLSubClassOfAxiom ax0 = (OWLSubClassOfAxiom) owlAxiomLinked;
+						if (ax0.getSuperClass() instanceof OWLClass) {
+							tempAxioms.add(ax0.getSuperClass().asOWLClass().getIRI()); }
+						if (ax0.getSubClass() instanceof OWLClass) {
+							tempAxioms.add(ax0.getSubClass().asOWLClass().getIRI()); }
+						if (ax0.getSuperClass() instanceof OWLObjectIntersectionOf) {
+							handleIntersection(ax0.getSuperClass(), tempAxioms);
+						}
+						if (ax0.getSubClass() instanceof OWLObjectIntersectionOf) {
+							handleIntersection(ax0.getSubClass(), tempAxioms);
+						}
+					}
+				}
+
+				reasonedAxioms.addAll(ontology.filterAxioms(Filters.subClassWithSuper, declarationClassAxiom.getEntity(), INCLUDED));
+
+				Collection<OWLAxiom> temp1 = ontology.filterAxioms(Filters.subClassWithSuper, declarationClassAxiom.getEntity(), INCLUDED);
+				if (!temp1.isEmpty()) {
+					for (OWLAxiom owlAxiomLinked : temp1) {
+						OWLSubClassOfAxiom ax0 = (OWLSubClassOfAxiom) owlAxiomLinked;
+						if (ax0.getSuperClass() instanceof OWLClass) {
+							tempAxioms.add(ax0.getSuperClass().asOWLClass().getIRI()); }
+						if (ax0.getSubClass() instanceof OWLClass) {
+							tempAxioms.add(ax0.getSubClass().asOWLClass().getIRI()); }
+						if (ax0.getSubClass() instanceof OWLObjectIntersectionOf) {
+							handleIntersection(ax0.getSubClass(), tempAxioms);
+						}
+						if (ax0.getSuperClass() instanceof OWLObjectIntersectionOf) {
+							handleIntersection(ax0.getSuperClass(), tempAxioms);
+						}
+					}
+				}
+
+				for (IRI iridef : tempAxioms) {
+					reasonedAxioms.addAll(ontology.getAnnotationAssertionAxioms(iridef)); }
+			}
 
 			OWLOntologyManager owlOntologyManager = OWLManager.createOWLOntologyManager();
 			ontology = owlOntologyManager.createOntology(reasonedAxioms);
@@ -193,6 +246,45 @@ public class RF2ToOWLService {
 			throw new ReasonerServiceException(String.format("Requested reasoner class '%s' not found.", reasonerFactoryClassName), e);
 		} catch (InstantiationException | IllegalAccessException e) {
 			throw new ReasonerServiceException(String.format("An instance of requested reasoner '%s' could not be created.", reasonerFactoryClass), e);
+		}
+	}
+
+	private void handleIntersection(OWLClassExpression owlClassExpression, Set<IRI> axiomSet) {
+		OWLObjectIntersectionOf owlObjectIntersectionOf = (OWLObjectIntersectionOf) (owlClassExpression);
+		Set<OWLClassExpression> operands = owlObjectIntersectionOf.getOperands();
+		for (OWLClassExpression operand : operands) {
+			if (operand instanceof OWLClass) { axiomSet.add(((OWLClass) operand).getIRI()); }
+			if (operand instanceof OWLObjectSomeValuesFrom) {
+				OWLObjectSomeValuesFrom owlObjectSomeValuesFrom = (OWLObjectSomeValuesFrom) operand;
+				OWLObjectPropertyExpression propertyExpression = owlObjectSomeValuesFrom.getProperty();
+				// Add object property
+				axiomSet.add(propertyExpression.getNamedProperty().getIRI());
+				// Re-analyze filler expression
+				OWLClassExpression fillerExpression = owlObjectSomeValuesFrom.getFiller();
+				if ((fillerExpression instanceof OWLClass)) {
+					axiomSet.add(((OWLClass) fillerExpression).getIRI()); }
+				else if ((fillerExpression instanceof OWLObjectIntersectionOf)) {
+					handleIntersection(fillerExpression, axiomSet);
+				} else {
+					handleValuesFrom(fillerExpression, axiomSet);
+				}
+			}
+		}
+	}
+
+	private void handleValuesFrom(OWLClassExpression owlClassExpression, Set<IRI> axiomSet) {
+		OWLObjectSomeValuesFrom owlObjectSomeValuesFrom = (OWLObjectSomeValuesFrom) owlClassExpression;
+		OWLObjectPropertyExpression propertyExpression = owlObjectSomeValuesFrom.getProperty();
+		// Add object property
+		axiomSet.add(propertyExpression.getNamedProperty().getIRI());
+		// Re-analyze filler expression
+		OWLClassExpression fillerExpression = owlObjectSomeValuesFrom.getFiller();
+		if ((fillerExpression instanceof OWLClass)) {
+			axiomSet.add(((OWLClass) fillerExpression).getIRI()); }
+		else if ((fillerExpression instanceof OWLObjectIntersectionOf)) {
+			handleIntersection(fillerExpression, axiomSet);
+		} else {
+			handleValuesFrom(fillerExpression, axiomSet);
 		}
 	}
 

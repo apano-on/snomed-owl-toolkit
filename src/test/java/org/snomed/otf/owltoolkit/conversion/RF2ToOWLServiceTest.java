@@ -23,7 +23,8 @@ public class RF2ToOWLServiceTest {
 
 		ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
 		final FileInputStream rf2ArchiveStream = new FileInputStream(baseRF2SnapshotZip);
-		rf2ToOWLService.convertRF2ArchiveToOWL(null, "20180731", true, new InputStreamSet(rf2ArchiveStream), new OptionalFileInputStream(null), byteArrayOutputStream, "138875005");
+		rf2ToOWLService.convertRF2ArchiveToOWL(null, "20180731", true, new InputStreamSet(rf2ArchiveStream), new OptionalFileInputStream(null), byteArrayOutputStream,
+				"362969004");
 
 		assertEquals("" +
 						rf2ToOWLService.getCopyrightNotice() +
@@ -388,7 +389,8 @@ public class RF2ToOWLServiceTest {
 		File extensionRF2SnapshotZip = ZipUtil.zipDirectoryRemovingCommentsAndBlankLines("src/test/resources/SnomedCT_MiniRF2_Extension_snapshot");
 
 		ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-		rf2ToOWLService.convertRF2ArchiveToOWL(null, "20180731", true, new InputStreamSet(baseRF2SnapshotZip, extensionRF2SnapshotZip), new OptionalFileInputStream(null), byteArrayOutputStream, null);
+		rf2ToOWLService.convertRF2ArchiveToOWL(null, "20180731", true, new InputStreamSet(baseRF2SnapshotZip, extensionRF2SnapshotZip), new OptionalFileInputStream(null), byteArrayOutputStream,
+				"18736003");
 
 		assertEquals("" +
 						rf2ToOWLService.getCopyrightNotice() +

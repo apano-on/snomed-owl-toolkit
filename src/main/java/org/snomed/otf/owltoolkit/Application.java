@@ -45,7 +45,7 @@ public class Application {
 	private static final SimpleDateFormat DATETIME_FORMAT = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss");
 	private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyyMMdd");
 	private static final String STATED_RELATIONSHIP_SNAPSHOT = "sct2_StatedRelationship_Snapshot.txt";
-	private static final String FILTERED_ENTITY = "-filtered_138875005";
+	private static final String FILTERED_ENTITY = "-filtered";
 
 	private boolean deleteOntologyFileOnExit;
 
@@ -86,8 +86,12 @@ public class Application {
 				convertStatedRelationshipsToOwlReferenceSetAndReconcile(args);
 			}
 			if (!modeFound || args.contains(ARG_RF2_TO_OWL)) {
-				//rf2ToOwl(args, null);
-				rf2ToOwl(args, FILTERED_ENTITY.substring(FILTERED_ENTITY.lastIndexOf("_") + 1));
+				String temp = null;
+				if (args.contains(FILTERED_ENTITY)) {
+					temp = args.get(args.indexOf(FILTERED_ENTITY) + 1);
+				}
+				//rf2ToOwl(args, FILTERED_ENTITY.substring(FILTERED_ENTITY.lastIndexOf("_") + 1));
+				rf2ToOwl(args, temp);
 			}
 		}
 	}
