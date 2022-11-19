@@ -1,29 +1,35 @@
 package org.snomed.otf.owltoolkit.conversion;
 
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import org.ihtsdo.otf.snomedboot.ReleaseImportException;
-import org.semanticweb.owlapi.model.OWLOntology;
-import org.semanticweb.owlapi.model.OWLOntologyCreationException;
-import org.semanticweb.owlapi.model.OWLOntologyStorageException;
+import org.semanticweb.owlapi.apibinding.OWLManager;
+import org.semanticweb.owlapi.model.*;
+import org.semanticweb.owlapi.reasoner.*;
+import org.semanticweb.owlapi.reasoner.structural.StructuralReasonerFactory;
+import org.semanticweb.owlapi.search.EntitySearcher;
+import org.semanticweb.owlapi.search.Filters;
+import org.semanticweb.owlapi.util.DefaultPrefixManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.snomed.otf.owltoolkit.constants.Concepts;
 import org.snomed.otf.owltoolkit.ontology.OntologyService;
+import org.snomed.otf.owltoolkit.ontology.render.SnomedPrefixManager;
+import org.snomed.otf.owltoolkit.service.ReasonerServiceException;
+import org.snomed.otf.owltoolkit.service.SnomedReasonerService;
 import org.snomed.otf.owltoolkit.taxonomy.SnomedTaxonomy;
 import org.snomed.otf.owltoolkit.taxonomy.SnomedTaxonomyBuilder;
 import org.snomed.otf.owltoolkit.taxonomy.SnomedTaxonomyLoader;
 import org.snomed.otf.owltoolkit.util.InputStreamSet;
 import org.snomed.otf.owltoolkit.util.OptionalFileInputStream;
 import org.springframework.util.FileCopyUtils;
+import uk.ac.manchester.cs.owlapi.modularity.ModuleType;
+import uk.ac.manchester.cs.owlapi.modularity.SyntacticLocalityModuleExtractor;
 
 import java.io.*;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
+
+import static org.semanticweb.owlapi.model.parameters.Imports.INCLUDED;
 
 public class RF2ToOWLService {
 
@@ -53,21 +59,6 @@ public class RF2ToOWLService {
 			throw new ConversionException("Failed to load RF2 archive.", e);
 		}
 
-		/*
-		Filter snomedTaxonomy to keep only specified class
-		 */
-		SnomedTaxonomyLoader snomedTaxonomyLoader = new SnomedTaxonomyLoader();
-		List<Long> temp0 = snomedTaxonomy.getAllConceptIds().stream()
-				.filter(v -> v.toString().equals(filter)).collect(Collectors.toList());
-		temp0.stream()
-						.forEach(v -> snomedTaxonomyLoader.newConceptState(v.toString(), "", "1", Concepts.SNOMED_CT_CORE_MODULE, ""));
-		Map<Long, Long> temp1 = snomedTaxonomy.getConceptModuleMap().entrySet().stream()
-				.filter(v -> v.getKey().toString().equals(filter))//.collect(Collectors.toList())
-				.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-		/*temp1.entrySet().stream()
-				.forEach(v -> snomedTaxonomyLoader.newRelationshipState());*/
-
-		SnomedTaxonomy snomedTaxonomy3 = snomedTaxonomyLoader.getSnomedTaxonomy();
 
 		if (snomedTaxonomy.getStatedRelationships().isEmpty() && snomedTaxonomy.getAxiomCount() == 0) {
 			throw new ConversionException("No Stated Relationships or Axioms were found. An Ontology file can not be produced.");
@@ -104,7 +95,59 @@ public class RF2ToOWLService {
 		OWLOntology ontology;
 		try {
 			ontology = ontologyService.createOntology(snomedTaxonomy, ontologyUri, versionDate, includeDescriptions);
-			String check = "check";
+			OWLDataFactory df = OWLManager.getOWLDataFactory();
+			SnomedPrefixManager prefixManager = ontologyService.getSnomedPrefixManager();
+			OWLClass filteredClass = df.getOWLClass(":"+ filter, prefixManager);
+
+			Set<OWLEntity> sig = new HashSet<>();
+			sig.add(filteredClass);
+			// We now add all subclasses (direct and indirect) of the chosen
+			// classes.
+			Set<OWLEntity> seedSig = new HashSet<>();
+			OWLReasonerFactory reasonerFactory = null;
+			try {
+				reasonerFactory = getOWLReasonerFactory(SnomedReasonerService.ELK_REASONER_FACTORY.toString());
+			} catch (ReasonerServiceException e) {
+				throw new RuntimeException(e);
+			}
+			final OWLReasonerConfiguration configuration = new SimpleConfiguration(new ConsoleProgressMonitor());
+			OWLReasoner reasoner = reasonerFactory.createReasoner(ontology, configuration);
+			for (OWLEntity ent : sig) {
+				seedSig.add(ent);
+				// Retrieve the sub and super classes
+				if (ent.isOWLClass()) {
+					NodeSet<OWLClass> subClasses = reasoner.getSubClasses(ent.asOWLClass(), false);
+					seedSig.addAll(subClasses.getFlattened());
+					NodeSet<OWLClass> superClasses = reasoner.getSuperClasses(ent.asOWLClass(), false);
+					seedSig.addAll(superClasses.getFlattened());
+				}
+			}
+
+			// Retrieve a specific module
+			SyntacticLocalityModuleExtractor sme =
+					new SyntacticLocalityModuleExtractor(ontologyService.getManager(), ontology, ModuleType.STAR);
+			Set<OWLAxiom> reasonedAxioms = sme.extract(seedSig);
+
+			// Get all subclass and superclass axioms for selected class
+			Collection<OWLAxiom> subClassOfFilterAxioms =
+					ontology.filterAxioms(Filters.subClassWithSub, filteredClass, INCLUDED);
+			reasonedAxioms.addAll(subClassOfFilterAxioms);
+			Collection<OWLAxiom> superClassOfFilterAxioms =
+					ontology.filterAxioms(Filters.subClassWithSuper, filteredClass, INCLUDED);
+			reasonedAxioms.addAll(superClassOfFilterAxioms);
+			/*Collection<OWLAxiom> axioms3 =
+					ontology.filterAxioms(Filters.axiomsFromTBoxAndRBox, filteredClass, INCLUDED);
+			Collection<OWLAxiom> axioms4 =
+					ontology.filterAxioms(Filters.axiomsNotInTBoxOrRBox, filteredClass, INCLUDED);
+			Collection<OWLAxiom> axioms5 =
+					ontology.filterAxioms(Filters.apDomainFilter, filteredClass, INCLUDED);*/
+
+			// Get all relevant Annotation Axioms
+			Set<OWLAnnotationAssertionAxiom> annotationFilterAxioms = ontology.getAnnotationAssertionAxioms(filteredClass.getIRI());
+			reasonedAxioms.addAll(annotationFilterAxioms);
+
+			OWLOntologyManager owlOntologyManager = OWLManager.createOWLOntologyManager();
+			ontology = owlOntologyManager.createOntology(reasonedAxioms);
 		} catch (OWLOntologyCreationException e) {
 			throw new ConversionException("Failed to build OWL Ontology from SNOMED taxonomy.", e);
 		}
@@ -139,6 +182,18 @@ public class RF2ToOWLService {
 
 	protected String getCopyrightNotice() throws IOException {
 		return FileCopyUtils.copyToString(new InputStreamReader(getClass().getResourceAsStream("/owl-file-copyright-notice.txt")));
+	}
+
+	private OWLReasonerFactory getOWLReasonerFactory(String reasonerFactoryClassName) throws ReasonerServiceException {
+		Class<?> reasonerFactoryClass = null;
+		try {
+			reasonerFactoryClass = Class.forName(reasonerFactoryClassName);
+			return (OWLReasonerFactory) reasonerFactoryClass.newInstance();
+		} catch (ClassNotFoundException e) {
+			throw new ReasonerServiceException(String.format("Requested reasoner class '%s' not found.", reasonerFactoryClassName), e);
+		} catch (InstantiationException | IllegalAccessException e) {
+			throw new ReasonerServiceException(String.format("An instance of requested reasoner '%s' could not be created.", reasonerFactoryClass), e);
+		}
 	}
 
 }

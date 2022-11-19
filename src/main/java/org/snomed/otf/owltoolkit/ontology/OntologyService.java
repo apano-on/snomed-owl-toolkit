@@ -481,4 +481,8 @@ public class OntologyService {
 		return map;
 	}
 
+	public OWLOntologyManager getManager() {
+		return manager;
+	}
+
 }
